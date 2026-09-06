@@ -1,6 +1,5 @@
 package com.example.trashcandetector.client;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -10,7 +9,6 @@ import net.minecraft.registry.Registries;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,8 +18,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 待搜索物品 ID 列表（//pick add/del/list 管理）
- * 持久化到 .minecraft/trashcan-detector/picklist.json
+ * 待搜索物品 ID 列表（//pick add/del/list 管理）。
+ * 主配置由 MaLiLib 持久化；首次使用时兼容导入旧 picklist.json。
  */
 public final class PickList {
 
@@ -65,7 +63,7 @@ public final class PickList {
             }
         }
         ENTRIES.add(id);
-        save();
+        saveToConfig();
         return true;
     }
 
@@ -82,7 +80,7 @@ public final class PickList {
         }
         boolean removed = ENTRIES.removeIf(entry -> entry.equalsIgnoreCase(id));
         if (removed) {
-            save();
+            saveToConfig();
         }
         return removed;
     }
@@ -118,43 +116,62 @@ public final class PickList {
             return;
         }
         loaded = true;
+        for (String configured : TrashCanDetectorConfigs.PICK_ITEM_IDS.getStrings()) {
+            String entry = normalize(configured);
+            if (!entry.isEmpty()) {
+                ENTRIES.add(entry);
+            }
+        }
+
+        // Import the old standalone list when the new MaLiLib list has no values.
+        if (ENTRIES.isEmpty()) {
+            importLegacyList();
+        }
+        LOGGER.info("已加载搜索列表，共 {} 项", ENTRIES.size());
+    }
+
+    /** Refresh the in-memory matcher after the MaLiLib list is edited. */
+    public static synchronized void reloadFromConfig() {
+        ensureLoaded();
+        ENTRIES.clear();
+        for (String configured : TrashCanDetectorConfigs.PICK_ITEM_IDS.getStrings()) {
+            String entry = normalize(configured);
+            if (!entry.isEmpty()) {
+                ENTRIES.add(entry);
+            }
+        }
+    }
+
+    private static void importLegacyList() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        Path path = client.runDirectory.toPath()
+            .resolve("trashcan-detector")
+            .resolve("picklist.json");
         try {
-            Path path = file();
-            if (Files.exists(path)) {
-                JsonObject obj = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8)).getAsJsonObject();
-                if (obj.has("items")) {
-                    for (JsonElement element : obj.getAsJsonArray("items")) {
-                        String entry = normalize(element.getAsString());
-                        if (!entry.isEmpty()) {
-                            ENTRIES.add(entry);
-                        }
+            if (!Files.exists(path)) {
+                return;
+            }
+            JsonObject obj = JsonParser.parseString(
+                Files.readString(path, StandardCharsets.UTF_8)
+            ).getAsJsonObject();
+            if (obj.has("items")) {
+                for (JsonElement element : obj.getAsJsonArray("items")) {
+                    String entry = normalize(element.getAsString());
+                    if (!entry.isEmpty()) {
+                        ENTRIES.add(entry);
                     }
                 }
             }
-            LOGGER.info("已加载搜索列表，共 {} 项", ENTRIES.size());
+            if (!ENTRIES.isEmpty()) {
+                saveToConfig();
+            }
         } catch (Exception e) {
-            LOGGER.warn("读取搜索列表失败: {}", e.toString());
+            LOGGER.warn("导入旧搜索列表失败: {}", e.toString());
         }
     }
 
-    private static void save() {
-        try {
-            Path path = file();
-            Files.createDirectories(path.getParent());
-            JsonObject obj = new JsonObject();
-            JsonArray arr = new JsonArray();
-            ENTRIES.forEach(arr::add);
-            obj.add("items", arr);
-            Files.writeString(path, obj.toString(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            LOGGER.error("保存搜索列表失败", e);
-        }
-    }
-
-    private static Path file() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return client.runDirectory.toPath()
-            .resolve("trashcan-detector")
-            .resolve("picklist.json");
+    private static void saveToConfig() {
+        TrashCanDetectorConfigs.PICK_ITEM_IDS.setStrings(new ArrayList<>(ENTRIES));
+        TrashCanDetectorConfigs.saveNow();
     }
 }

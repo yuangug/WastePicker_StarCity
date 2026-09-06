@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 注入 ChatScreen，拦截 //pick 指令输入：
+ * 注入 ChatScreen，拦截本模组的本地指令输入：
  * - Enter 键：本地执行指令（start/add/list/del），消息不发送到服务器
  * - Tab 键：不拦截，走原版 chatInputSuggestor 补全（命令树由
  *   ClientPlayNetworkHandlerMixin 注册）
@@ -33,14 +33,14 @@ public abstract class ChatScreenMixin {
             return;
         }
         String text = this.chatField.getText();
-        if (!PickCommandHandler.isPickCommand(text)) {
+        if (!PickCommandHandler.isPickCommand(text) && !PickCommandHandler.isTrashCommand(text)) {
             return;
         }
 
         // 沿用原版规整（去首尾空格、压缩连续空格）
         ChatScreen self = (ChatScreen) (Object) this;
         String normalized = self.normalize(text);
-        if (!PickCommandHandler.isPickCommand(normalized)) {
+        if (!PickCommandHandler.isPickCommand(normalized) && !PickCommandHandler.isTrashCommand(normalized)) {
             return;
         }
 

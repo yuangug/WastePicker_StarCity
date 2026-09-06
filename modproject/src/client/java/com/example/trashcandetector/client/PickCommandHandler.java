@@ -21,6 +21,7 @@ import java.util.Locale;
 public final class PickCommandHandler {
 
     public static final String COMMAND = "//pick";
+    public static final String TRASH_COMMAND = "//trash";
 
     /** //pick add 物品 ID 补全：全物品注册表（原版风格，支持短名匹配） */
     private static final SuggestionProvider<ClientCommandSource> ADD_SUGGESTIONS =
@@ -44,6 +45,15 @@ public final class PickCommandHandler {
             return false;
         }
         return text.length() == COMMAND.length() || text.charAt(COMMAND.length()) == ' ';
+    }
+
+    public static boolean isTrashCommand(String text) {
+        return isCommand(text, TRASH_COMMAND);
+    }
+
+    private static boolean isCommand(String text, String command) {
+        if (text == null || !text.regionMatches(true, 0, command, 0, command.length())) return false;
+        return text.length() == command.length() || text.charAt(command.length()) == ' ';
     }
 
     /**
@@ -80,17 +90,46 @@ public final class PickCommandHandler {
                 .suggests(DEL_SUGGESTIONS)
                 .executes(ctx -> 1)));
         dispatcher.register(root);
+
+        LiteralArgumentBuilder<ClientCommandSource> trashRoot =
+            LiteralArgumentBuilder.<ClientCommandSource>literal("/trash");
+        trashRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("clear")
+            .executes(ctx -> {
+                execute(TRASH_COMMAND + " clear");
+                return 1;
+            }));
+        trashRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("status")
+            .executes(ctx -> {
+                execute(TRASH_COMMAND + " status");
+                return 1;
+            }));
+        dispatcher.register(trashRoot);
     }
 
     /**
      * 执行 //pick 指令（chatText 已经过 ChatScreen 的空白规整）
      */
     public static void execute(String chatText) {
-        String rest = chatText.substring(COMMAND.length()).trim();
+        boolean trash = isTrashCommand(chatText);
+        String command = trash ? TRASH_COMMAND : COMMAND;
+        String rest = chatText.substring(command.length()).trim();
         String[] args = rest.isEmpty() ? new String[0] : rest.split(" ");
 
         if (args.length == 0) {
             usage();
+            return;
+        }
+
+        if (trash) {
+            switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "clear" -> {
+                    if (args.length != 1) usage(); else TrashCanDetectorClient.requestTrashClear();
+                }
+                case "status" -> {
+                    if (args.length != 1) usage(); else cmdStatus();
+                }
+                default -> usage();
+            }
             return;
         }
 
@@ -141,6 +180,8 @@ public final class PickCommandHandler {
         feedback("//pick add <物品ID> —— 添加要搜索的物品（支持 Tab 补全）");
         feedback("//pick list —— 查看当前搜索列表");
         feedback("//pick del <物品ID> —— 删除列表中的物品（支持 Tab 补全）");
+        feedback("//trash clear —— 打开垃圾桶并自动丢弃全部物品");
+        feedback("//trash status —— 查看自动化开关和运行状态");
     }
 
     private static void cmdStart() {
@@ -185,6 +226,16 @@ public final class PickCommandHandler {
             int end = Math.min(i + 10, entries.size());
             feedback("  " + String.join("、", entries.subList(i, end)));
         }
+    }
+
+    private static void cmdStatus() {
+        feedback("自动清空：" + (TrashCanDetectorConfigs.AUTO_CLEAR_TRASH.getBooleanValue() ? "开启" : "关闭"));
+        feedback("清空规则：" + TrashClearFilter.modeName());
+        feedback("清空名单：" + TrashClearFilter.status());
+        feedback("自动购买积分：" + (PointBuyer.isEnabled() ? "开启" : "关闭")
+            + "，每次 " + TrashCanDetectorConfigs.pointsPerPurchase() + " 个");
+        feedback("运行状态：" + (TrashCleaner.isActive() ? "正在清空垃圾桶"
+            : TrashPicker.isActive() ? "正在搜索垃圾桶" : "空闲"));
     }
 
     private static void feedback(String message) {

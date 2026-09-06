@@ -4,6 +4,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import fi.dy.masa.malilib.event.InitializationHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.component.DataComponentTypes;
@@ -47,12 +48,12 @@ public class TrashCanDetectorClient implements ClientModInitializer {
     private static int pendingTicks;
     /** 导出完成后自动开始拾取（//pick start，或 //pick auto 开启时由刷新消息触发） */
     private static boolean pickRequested;
-    /** //pick auto 开关：开启后检测到垃圾桶刷新时，导出完成自动接续翻页拾取 */
-    private static boolean autoPick;
-
+    /** 导出完成后自动清空（刷新消息或 //trash clear 触发） */
+    private static boolean clearRequested;
     @Override
     public void onInitializeClient() {
         LOGGER.info("TrashCan Detector 已加载，开始监听垃圾桶刷新消息");
+        InitializationHandler.getInstance().registerInitializationHandler(new TrashCanDetectorMalilib());
 
         // 1) 聊天消息监听：检测到垃圾桶提示后自动发送 /trash（自动拾取任务运行中时忽略）
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
@@ -76,7 +77,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
                 }
 
                 MinecraftClient client = MinecraftClient.getInstance();
-                if (client.player != null) {
+                if (client.player != null && client.getNetworkHandler() != null) {
                     client.player.sendMessage(
                         Text.literal(PREFIX + "检测到垃圾桶刷新，正在自动打开..."),
                         false
@@ -109,37 +110,75 @@ public class TrashCanDetectorClient implements ClientModInitializer {
 
         // 3) 每 tick 检查：延迟后读取容器内容并导出；随后驱动拾取状态机
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (client.player == null || client.getNetworkHandler() == null || client.world == null) {
+                cancelPendingTrashRequest();
+            }
+
             if (pendingRead && pendingScreen != null) {
-                pendingTicks++;
-                if (pendingTicks < READ_DELAY_TICKS) return;
-
-                // 延迟结束，读取并导出首页内容
-                pendingRead = false;
-                boolean doPick = pickRequested;
-                pickRequested = false;
-                readAndExportContainer(client, pendingScreen);
-                pendingScreen = null;
-
-                // //pick start 或 auto 模式：导出后开始自动翻页拾取
-                if (doPick) {
-                    TrashPicker.begin();
+                if (client.player == null || client.getNetworkHandler() == null
+                    || client.currentScreen != pendingScreen) {
+                    pendingRead = false;
+                    pendingScreen = null;
+                    pickRequested = false;
+                    clearRequested = false;
+                    feedback("垃圾桶界面已关闭，待处理操作已取消");
                 }
             }
 
-            TrashPicker.tick(client);
+            if (pendingRead && pendingScreen != null) {
+                pendingTicks++;
+                if (pendingTicks >= READ_DELAY_TICKS) {
+                    // 延迟结束，读取并导出首页内容
+                    pendingRead = false;
+                    boolean doPick = pickRequested;
+                    boolean doClear = clearRequested;
+                    pickRequested = false;
+                    clearRequested = false;
+                    readAndExportContainer(client, pendingScreen);
+                    pendingScreen = null;
+
+                    if (doClear) {
+                        TrashCleaner.begin();
+                    } else if (doPick) {
+                        TrashPicker.begin();
+                    }
+                }
+            }
+
+            if (TrashCleaner.isActive()) {
+                TrashCleaner.tick(client);
+            } else {
+                TrashPicker.tick(client);
+            }
+            PointBuyer.tick(client);
         });
     }
 
     static boolean isBusy() {
-        return waitingForTrashScreen || pendingRead || TrashPicker.isActive();
+        return waitingForTrashScreen || pendingRead || TrashPicker.isActive() || TrashCleaner.isActive();
+    }
+
+    private static void cancelPendingTrashRequest() {
+        if (!waitingForTrashScreen && !pendingRead && pendingScreen == null
+            && !pickRequested && !clearRequested) {
+            return;
+        }
+        waitingForTrashScreen = false;
+        pendingRead = false;
+        pendingScreen = null;
+        pendingTicks = 0;
+        pickRequested = false;
+        clearRequested = false;
     }
 
     /**
      * 由 PickCommandHandler 调用（//pick auto）：开关自动拾取模式，返回切换后的状态
      */
     static boolean toggleAutoPick() {
-        autoPick = !autoPick;
-        return autoPick;
+        boolean enabled = !TrashCanDetectorConfigs.AUTO_PICK_ON_REFRESH.getBooleanValue();
+        TrashCanDetectorConfigs.AUTO_PICK_ON_REFRESH.setBooleanValue(enabled);
+        TrashCanDetectorConfigs.saveNow();
+        return enabled;
     }
 
     /**
@@ -155,7 +194,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             feedback("搜索列表为空，请先用 //pick add <物品ID> 添加物品（//pick list 查看）");
             return;
         }
-        if (TrashPicker.isActive()) {
+        if (TrashPicker.isActive() || TrashCleaner.isActive()) {
             feedback("正在搜索中，请等待当前任务完成");
             return;
         }
@@ -167,6 +206,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
         }
 
         pickRequested = true;
+        clearRequested = false;
         // 关闭当前打开的界面，避免 /trash 打不开
         if (client.currentScreen != null) {
             if (client.currentScreen instanceof HandledScreen) {
@@ -176,6 +216,36 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             }
         }
         feedback("正在自动打开垃圾桶（待搜索 " + PickList.size() + " 项物品）...");
+        client.getNetworkHandler().sendChatCommand("trash");
+        waitingForTrashScreen = true;
+    }
+
+    /** 由本地 //trash clear 命令或清空快捷键调用。 */
+    static void requestTrashClear() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || client.getNetworkHandler() == null) {
+            feedback("请先进入游戏服务器后再使用 //trash clear");
+            return;
+        }
+        if (TrashPicker.isActive() || TrashCleaner.isActive()) {
+            feedback("已有垃圾桶自动化任务正在运行");
+            return;
+        }
+        if (pendingRead || waitingForTrashScreen) {
+            clearRequested = true;
+            pickRequested = false;
+            feedback("垃圾桶正在打开，数据同步后将自动清空...");
+            return;
+        }
+
+        clearRequested = true;
+        pickRequested = false;
+        if (client.currentScreen instanceof HandledScreen<?>) {
+            client.player.closeHandledScreen();
+        } else if (client.currentScreen != null) {
+            client.setScreen(null);
+        }
+        feedback("正在打开垃圾桶并准备清空...");
         client.getNetworkHandler().sendChatCommand("trash");
         waitingForTrashScreen = true;
     }
