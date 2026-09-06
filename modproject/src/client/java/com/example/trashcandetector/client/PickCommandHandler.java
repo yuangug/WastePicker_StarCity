@@ -192,7 +192,7 @@ public final class PickCommandHandler {
         if (TrashCanDetectorClient.toggleAutoPick()) {
             feedback("自动拾取已开启：每次检测到垃圾桶刷新，导出后会自动翻页搜索（//pick start 不受影响）");
         } else {
-            feedback("自动拾取已关闭：检测到垃圾桶刷新时仅自动打开并导出");
+            feedback("自动拾取已关闭：检测到垃圾桶刷新时不再提醒和自动打开（//pick start 不受影响）");
         }
     }
 
