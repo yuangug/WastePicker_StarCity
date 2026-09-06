@@ -20,14 +20,10 @@ import java.util.Map;
  */
 public final class TrashPicker {
 
-    /** 垃圾桶 GUI 总槽位（6 行容器 54 + 玩家背包 36） */
-    private static final int TOTAL_SLOTS = 90;
-    /** 0-35 为正文内容 */
-    private static final int CONTENT_SLOTS = 36;
-    /** 36-53 为 UI 按钮区 */
-    private static final int UI_START = 36;
-    private static final int UI_END = 54;
-    private static final String NEXT_PAGE_BUTTON = "下一页";
+    /** 垃圾桶 GUI 总槽位（垃圾内容 36 + 操作区 18 + 玩家背包 36）。 */
+    private static final int TOTAL_SLOTS = TrashPageInfo.TOTAL_SLOTS;
+    /** 0-35 为垃圾桶正文内容。 */
+    private static final int CONTENT_SLOTS = TrashPageInfo.CONTENT_SLOTS;
 
     /** 拾取/丢出点击后先等这几 tick 再轮询（点击回包尚未到达，此时读到的一定是旧状态） */
     private static final int VERIFY_MIN_TICKS = 2;
@@ -158,7 +154,7 @@ public final class TrashPicker {
             finish(client, "已达到最大翻页数 " + MAX_PAGES + "，为安全起见提前结束");
             return;
         }
-        int button = findNextPageButton(handler);
+        int button = TrashPageInfo.findNextPageButton(handler);
         if (button < 0) {
             finish(client, pagesFlipped == 0
                 ? "本页未找到[下一页]按钮，单页遍历完成"
@@ -167,7 +163,7 @@ public final class TrashPicker {
         }
 
         // 翻页前记住本页内容（用于翻到底检测）
-        pageSignature = signature(handler);
+        pageSignature = TrashPageInfo.signature(handler);
         flipLastSig = null;
         click(client, handler, button, 0, SlotActionType.PICKUP);
         pagesFlipped++;
@@ -236,7 +232,7 @@ public final class TrashPicker {
             return;
         }
 
-        String sig = signature(handler);
+        String sig = TrashPageInfo.signature(handler);
 
         if (sig.equals(pageSignature)) {
             // 内容仍是旧页：等满上限仍未变化 → 已翻到最后一页
@@ -260,19 +256,6 @@ public final class TrashPicker {
         client.interactionManager.clickSlot(handler.syncId, slotId, button, type, client.player);
     }
 
-    /**
-     * 在 36-53 UI 按钮区查找[下一页]按钮所在格
-     */
-    private static int findNextPageButton(ScreenHandler handler) {
-        for (int i = UI_START; i < UI_END; i++) {
-            ItemStack stack = handler.getSlot(i).getStack();
-            if (!stack.isEmpty() && NEXT_PAGE_BUTTON.equals(stack.getName().getString())) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
     private static boolean isSameStackAt(ScreenHandler handler, int slotId, String itemId) {
         if (slotId >= handler.slots.size()) {
             return false;
@@ -289,26 +272,6 @@ public final class TrashPicker {
         } else {
             tallied.droppedCount += actionCount;
         }
-    }
-
-    /**
-     * 整页内容签名（0-53 的物品ID、数量、显示名），用于翻页前后对比
-     */
-    private static String signature(ScreenHandler handler) {
-        StringBuilder sb = new StringBuilder(1024);
-        for (int i = 0; i < UI_END; i++) {
-            ItemStack stack = handler.getSlot(i).getStack();
-            if (stack.isEmpty()) {
-                sb.append(i).append(":;");
-            } else {
-                sb.append(i).append(':')
-                    .append(Registries.ITEM.getId(stack.getItem()))
-                    .append('x').append(stack.getCount())
-                    .append('|').append(stack.getName().getString())
-                    .append(';');
-            }
-        }
-        return sb.toString();
     }
 
     private static void abort(MinecraftClient client, String reason) {

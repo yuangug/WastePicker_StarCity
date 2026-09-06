@@ -21,3 +21,7 @@ Thumbs.db
 .env
 *.key
 credentials.*
+
+# MaLiLib compile-only dependency is downloaded and checksum-verified by Gradle.
+# Keep the fixed dependency out of source control.
+libs/
