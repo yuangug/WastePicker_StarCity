@@ -10,21 +10,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Client-side state machine that clears every trash page.
+ * 一键清空垃圾桶的客户端状态机。
  *
- * The server requires trash items to enter the player's inventory before they
- * can be discarded. Each batch therefore uses at most one empty inventory slot
- * per trash stack: all transfers are sent as one batch, then all batch slots
- * are discarded as one batch after the transfer is synchronized.
+ * 直接对垃圾桶正文格（0-35）发送整组丢弃点击（button=1 的 THROW，等同 Ctrl+Q），
+ * 不再先转入玩家背包。每批丢弃后等待服务器同步确认，本页丢完再翻下一页。
  */
 public final class TrashCleaner {
 
     private static final int TOTAL_SLOTS = TrashPageInfo.TOTAL_SLOTS;
     private static final int CONTENT_SLOTS = TrashPageInfo.CONTENT_SLOTS;
-    private static final int INVENTORY_START = TrashPageInfo.INVENTORY_START;
-    private static final int INVENTORY_END = TrashPageInfo.INVENTORY_END;
     private static final int VERIFY_MIN_TICKS = 2;
     private static final int VERIFY_MAX_TICKS = 15;
+    /** 等待确认期间，对仍未丢出的格子每隔这么多 tick 重发一次丢弃点击 */
+    private static final int RETRY_INTERVAL_TICKS = 4;
     private static final int CURSOR_WAIT_MAX_TICKS = 60;
     private static final int FLIP_MIN_TICKS = 3;
     private static final int FLIP_MAX_TICKS = 30;
@@ -33,20 +31,18 @@ public final class TrashCleaner {
     private static final int EXTERNAL_LIST_REFRESH_TICKS = 40;
     private enum Phase {
         SCAN,
-        WAIT_TRANSFER,
         WAIT_DISCARD,
         WAIT_FLIP,
         WAIT_FLIP_CURSOR
     }
 
-    private static final class BatchMove {
+    /** 一批待直接丢弃的正文格：记录扫描时的内容签名，用于同步确认与防误丢校验 */
+    private static final class BatchThrow {
         final int sourceSlot;
-        final int inventorySlot;
         final String expectedSignature;
 
-        BatchMove(int sourceSlot, int inventorySlot, String expectedSignature) {
+        BatchThrow(int sourceSlot, String expectedSignature) {
             this.sourceSlot = sourceSlot;
-            this.inventorySlot = inventorySlot;
             this.expectedSignature = expectedSignature;
         }
     }
@@ -63,7 +59,7 @@ public final class TrashCleaner {
     private static int pageInfoWaitTicks;
     private static int flipButtonSlot = -1;
     private static String expectedFlipCursorSignature;
-    private static final List<BatchMove> currentBatch = new ArrayList<>();
+    private static final List<BatchThrow> currentBatch = new ArrayList<>();
     private static int pagesFlipped;
     private static int externalListRefreshTicks;
 
@@ -111,7 +107,6 @@ public final class TrashCleaner {
             return;
         }
         if (!handler.getCursorStack().isEmpty()
-            && phase != Phase.WAIT_TRANSFER
             && phase != Phase.WAIT_FLIP
             && phase != Phase.WAIT_FLIP_CURSOR) {
             // A server correction can arrive one or two ticks after the phase
@@ -139,7 +134,6 @@ public final class TrashCleaner {
 
         switch (phase) {
             case SCAN -> tickScan(client, handler);
-            case WAIT_TRANSFER -> tickTransfer(client, handler);
             case WAIT_DISCARD -> tickDiscard(client, handler);
             case WAIT_FLIP -> tickFlip(client, handler);
             case WAIT_FLIP_CURSOR -> tickFlipCursor(client, handler);
@@ -176,28 +170,19 @@ public final class TrashCleaner {
 
         currentBatch.clear();
 
-        List<Integer> emptyInventorySlots = findEmptyInventorySlots(handler);
-        int inventoryIndex = 0;
-        for (int sourceSlot = 0; sourceSlot < CONTENT_SLOTS
-            && inventoryIndex < emptyInventorySlots.size(); sourceSlot++) {
-            // Never include the operation row (36-53) in a clear batch.
+        for (int sourceSlot = 0; sourceSlot < CONTENT_SLOTS; sourceSlot++) {
+            // 操作栏（36-53）永远不参与清空
             ItemStack stack = handler.getSlot(sourceSlot).getStack();
             if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) {
-                currentBatch.add(new BatchMove(
+                currentBatch.add(new BatchThrow(
                     sourceSlot,
-                    emptyInventorySlots.get(inventoryIndex++),
                     TrashPageInfo.stackSignature(stack)
                 ));
             }
         }
 
         if (!currentBatch.isEmpty()) {
-            transferBatch(client, handler);
-            return;
-        }
-
-        if (hasDiscardableContent(handler) && emptyInventorySlots.isEmpty()) {
-            abort(client, "玩家背包没有空格，无法先取出垃圾桶物品");
+            throwBatch(client, handler);
             return;
         }
 
@@ -229,46 +214,15 @@ public final class TrashCleaner {
         waitTicks = 0;
     }
 
-    private static void transferBatch(MinecraftClient client, ScreenHandler handler) {
-        // Each pair leaves the cursor empty and keeps all source/target slots stable.
-        for (BatchMove move : currentBatch) {
-            click(client, handler, move.sourceSlot, 0, SlotActionType.PICKUP);
-            click(client, handler, move.inventorySlot, 0, SlotActionType.PICKUP);
-        }
-        phase = Phase.WAIT_TRANSFER;
-        waitTicks = 0;
-    }
-
-    private static void tickTransfer(MinecraftClient client, ScreenHandler handler) {
-        waitTicks++;
-        if (waitTicks < VERIFY_MIN_TICKS) return;
-
-        // PICKUP(source) followed by PICKUP(empty inventory slot) is a
-        // two-click transfer. A delayed server update can leave the source
-        // stack on the cursor for a few ticks. Do not inspect or discard the
-        // batch until that cursor transaction has settled.
-        if (!handler.getCursorStack().isEmpty()) {
-            retryTransferCursor(client, handler);
-            if (waitTicks >= CURSOR_WAIT_MAX_TICKS) {
-                abort(client, "垃圾桶物品转移超时，光标上的物品未能归还到背包");
+    private static void throwBatch(MinecraftClient client, ScreenHandler handler) {
+        for (BatchThrow move : currentBatch) {
+            // 点击前重读签名：扫描后该格已被服务器替换时跳过，避免误丢未过滤的物品
+            if (!move.expectedSignature.equals(
+                TrashPageInfo.stackSignature(handler.getSlot(move.sourceSlot).getStack()))) {
+                continue;
             }
-            return;
-        }
-
-        for (BatchMove move : currentBatch) {
-            ItemStack source = handler.getSlot(move.sourceSlot).getStack();
-            ItemStack destination = handler.getSlot(move.inventorySlot).getStack();
-            if (!source.isEmpty() || !TrashPageInfo.stackSignature(destination).equals(move.expectedSignature)) {
-                if (waitTicks >= VERIFY_MAX_TICKS) {
-                    abort(client, "垃圾桶物品未能完整转入背包，已停止");
-                }
-                return;
-            }
-        }
-
-        // The batch is now in the player's inventory. Discard only these known targets.
-        for (BatchMove move : currentBatch) {
-            click(client, handler, move.inventorySlot, 1, SlotActionType.THROW);
+            // button=1：整组直接从垃圾桶丢出，光标保持为空
+            click(client, handler, move.sourceSlot, 1, SlotActionType.THROW);
         }
         phase = Phase.WAIT_DISCARD;
         waitTicks = 0;
@@ -278,17 +232,29 @@ public final class TrashCleaner {
         waitTicks++;
         if (waitTicks < VERIFY_MIN_TICKS) return;
 
-        for (BatchMove move : currentBatch) {
-            if (!handler.getSlot(move.inventorySlot).getStack().isEmpty()) {
-                if (waitTicks >= VERIFY_MAX_TICKS) {
-                    abort(client, "背包中的垃圾桶物品未能丢弃，已停止");
-                }
-                return;
+        boolean pending = false;
+        for (BatchThrow move : currentBatch) {
+            ItemStack stack = handler.getSlot(move.sourceSlot).getStack();
+            if (stack.isEmpty()
+                || !move.expectedSignature.equals(TrashPageInfo.stackSignature(stack))) {
+                // 原物品已离开该格：丢弃成功，或被服务器替换（交给下一轮扫描处理）
+                continue;
             }
+            // 该格仍是扫描时的同一组物品：每隔几 tick 重试一次丢弃
+            if (waitTicks % RETRY_INTERVAL_TICKS == 0) {
+                click(client, handler, move.sourceSlot, 1, SlotActionType.THROW);
+            }
+            pending = true;
         }
 
-        currentBatch.clear();
-        phase = Phase.SCAN;
+        if (!pending) {
+            currentBatch.clear();
+            phase = Phase.SCAN;
+            return;
+        }
+        if (waitTicks >= VERIFY_MAX_TICKS) {
+            abort(client, "垃圾桶物品未能直接丢弃，已停止");
+        }
     }
 
     private static void tickFlip(MinecraftClient client, ScreenHandler handler) {
@@ -379,42 +345,6 @@ public final class TrashCleaner {
         if (waitTicks >= CURSOR_WAIT_MAX_TICKS) {
             abort(client, "下一页按钮物品未能归还到操作栏");
         }
-    }
-
-    private static void retryTransferCursor(MinecraftClient client, ScreenHandler handler) {
-        if ((waitTicks & 3) != 0) {
-            return;
-        }
-        String cursorSignature = TrashPageInfo.stackSignature(handler.getCursorStack());
-        for (BatchMove move : currentBatch) {
-            if (!move.expectedSignature.equals(cursorSignature)) {
-                continue;
-            }
-            if (handler.getSlot(move.inventorySlot).getStack().isEmpty()) {
-                // The second pickup may have been rejected while the first
-                // click was accepted. Retry only the matching destination slot.
-                click(client, handler, move.inventorySlot, 0, SlotActionType.PICKUP);
-            }
-            return;
-        }
-    }
-
-    private static List<Integer> findEmptyInventorySlots(ScreenHandler handler) {
-        List<Integer> result = new ArrayList<>();
-        for (int slot = INVENTORY_START; slot < INVENTORY_END; slot++) {
-            if (handler.getSlot(slot).getStack().isEmpty()) {
-                result.add(slot);
-            }
-        }
-        return result;
-    }
-
-    private static boolean hasDiscardableContent(ScreenHandler handler) {
-        for (int slot = 0; slot < CONTENT_SLOTS; slot++) {
-            ItemStack stack = handler.getSlot(slot).getStack();
-            if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) return true;
-        }
-        return false;
     }
 
     private static void click(MinecraftClient client, ScreenHandler handler, int slot, int button, SlotActionType type) {

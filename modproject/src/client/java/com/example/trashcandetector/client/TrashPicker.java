@@ -25,12 +25,12 @@ public final class TrashPicker {
     /** 0-35 为垃圾桶正文内容。 */
     private static final int CONTENT_SLOTS = TrashPageInfo.CONTENT_SLOTS;
 
-    /** 拾取/丢出点击后先等这几 tick 再轮询（点击回包尚未到达，此时读到的一定是旧状态） */
-    private static final int VERIFY_MIN_TICKS = 2;
+    /** 拾取/丢出点击后先等这几 tick 再轮询：原版点击会同步做客户端预测，下一 tick 即可读到点击结果 */
+    private static final int VERIFY_MIN_TICKS = 1;
     /** 拾取确认上限（tick）：物品始终仍在原格才判定失败——背包满转丢出 / 丢出被拒跳过 */
     private static final int VERIFY_MAX_TICKS = 10;
-    /** 点击“下一页”后先等这几 tick 再开始轮询（点击回包尚未到达，此时读到的一定是旧页） */
-    private static final int FLIP_MIN_TICKS = 3;
+    /** 点击“下一页”后先等这几 tick 再轮询：新页内容由服务器下发，只留 1 tick 防止读到旧页 */
+    private static final int FLIP_MIN_TICKS = 2;
     /** 翻页等待上限（tick）：内容始终未变才判定已到最后一页（保留 1 秒兜底，防慢服误判翻到底） */
     private static final int FLIP_MAX_TICKS = 20;
     /** 安全上限：最多翻多少页，防止极端情况死循环 */
