@@ -22,8 +22,11 @@ jobs:
       - name: 设置 Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: 清理 Fabric Loom 缓存
+        run: rm -rf ~/.gradle/caches/fabric-loom ~/.gradle/caches/modules-2/files-2.1.net.fabricmc
+
       - name: 构建
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon --stacktrace
         working-directory: modproject
 
       - name: 上传构建产物
