@@ -37,6 +37,9 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigOptionList CLEAR_MODE = new ConfigOptionList(
         "clearMode", TrashClearMode.ALL, "选择自动清空垃圾桶时的物品过滤模式。"
     ).translatedName("清空物品模式");
+    public static final ConfigBoolean DIRECT_TRASH_DISCARD = new ConfigBoolean(
+        "directTrashDiscard", true, "直接从垃圾桶槽位丢弃物品；关闭后先转移到背包再丢弃。"
+    ).translatedName("直接丢弃垃圾桶物品");
     public static final ConfigStringList CLEAR_BLACKLIST = new ConfigStringList(
         "clearBlacklist", ImmutableList.of(), "清空时排除的物品 ID，每行一个。"
     ).translatedName("清空黑名单");
@@ -66,6 +69,7 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
         AUTO_PICK_ON_REFRESH,
         PICK_ITEM_IDS,
         CLEAR_MODE,
+        DIRECT_TRASH_DISCARD,
         CLEAR_BLACKLIST,
         CLEAR_WHITELIST,
         SYNC_TWEAKEROO_MINING_LIST,

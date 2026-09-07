@@ -9,19 +9,15 @@ import net.minecraft.screen.slot.SlotActionType;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 一键清空垃圾桶的客户端状态机。
- *
- * 直接对垃圾桶正文格（0-35）发送整组丢弃点击（button=1 的 THROW，等同 Ctrl+Q），
- * 不再先转入玩家背包。每批丢弃后等待服务器同步确认，本页丢完再翻下一页。
- */
+/** Clears each trash page using the configured discard strategy. */
 public final class TrashCleaner {
 
     private static final int TOTAL_SLOTS = TrashPageInfo.TOTAL_SLOTS;
     private static final int CONTENT_SLOTS = TrashPageInfo.CONTENT_SLOTS;
+    private static final int INVENTORY_START = TrashPageInfo.INVENTORY_START;
+    private static final int INVENTORY_END = TrashPageInfo.INVENTORY_END;
     private static final int VERIFY_MIN_TICKS = 2;
     private static final int VERIFY_MAX_TICKS = 15;
-    /** 等待确认期间，对仍未丢出的格子每隔这么多 tick 重发一次丢弃点击 */
     private static final int RETRY_INTERVAL_TICKS = 4;
     private static final int CURSOR_WAIT_MAX_TICKS = 60;
     private static final int FLIP_MIN_TICKS = 3;
@@ -29,25 +25,29 @@ public final class TrashCleaner {
     private static final int MAX_PAGES = 200;
     private static final int PAGE_INFO_WAIT_MAX_TICKS = 20 * 5;
     private static final int EXTERNAL_LIST_REFRESH_TICKS = 40;
+
     private enum Phase {
         SCAN,
+        WAIT_TRANSFER,
         WAIT_DISCARD,
         WAIT_FLIP,
         WAIT_FLIP_CURSOR
     }
 
-    /** 一批待直接丢弃的正文格：记录扫描时的内容签名，用于同步确认与防误丢校验 */
-    private static final class BatchThrow {
+    private static final class BatchEntry {
         final int sourceSlot;
+        final int inventorySlot;
         final String expectedSignature;
 
-        BatchThrow(int sourceSlot, String expectedSignature) {
+        BatchEntry(int sourceSlot, int inventorySlot, String expectedSignature) {
             this.sourceSlot = sourceSlot;
+            this.inventorySlot = inventorySlot;
             this.expectedSignature = expectedSignature;
         }
     }
 
     private static boolean active;
+    private static boolean directDiscard;
     private static Phase phase = Phase.SCAN;
     private static int waitTicks;
     private static int currentPage;
@@ -59,7 +59,7 @@ public final class TrashCleaner {
     private static int pageInfoWaitTicks;
     private static int flipButtonSlot = -1;
     private static String expectedFlipCursorSignature;
-    private static final List<BatchThrow> currentBatch = new ArrayList<>();
+    private static final List<BatchEntry> currentBatch = new ArrayList<>();
     private static int pagesFlipped;
     private static int externalListRefreshTicks;
 
@@ -72,6 +72,7 @@ public final class TrashCleaner {
 
     public static void begin() {
         active = true;
+        directDiscard = TrashCanDetectorConfigs.DIRECT_TRASH_DISCARD.getBooleanValue();
         phase = Phase.SCAN;
         waitTicks = 0;
         currentPage = -1;
@@ -107,10 +108,9 @@ public final class TrashCleaner {
             return;
         }
         if (!handler.getCursorStack().isEmpty()
+            && phase != Phase.WAIT_TRANSFER
             && phase != Phase.WAIT_FLIP
             && phase != Phase.WAIT_FLIP_CURSOR) {
-            // A server correction can arrive one or two ticks after the phase
-            // changes. Pause without clicking until the cursor is synchronized.
             if (++cursorWaitTicks >= CURSOR_WAIT_MAX_TICKS) {
                 abort(client, "鼠标物品同步超时，已停止以避免误操作");
             }
@@ -134,6 +134,7 @@ public final class TrashCleaner {
 
         switch (phase) {
             case SCAN -> tickScan(client, handler);
+            case WAIT_TRANSFER -> tickTransfer(client, handler);
             case WAIT_DISCARD -> tickDiscard(client, handler);
             case WAIT_FLIP -> tickFlip(client, handler);
             case WAIT_FLIP_CURSOR -> tickFlipCursor(client, handler);
@@ -161,28 +162,29 @@ public final class TrashCleaner {
             abort(client, "垃圾桶总页数发生变化");
             return;
         }
-        // The information item reports the total page count. The current page
-        // is tracked locally because this GUI does not expose a current-page
-        // number in the item lore.
         if (currentPage < 1) {
             currentPage = 1;
         }
 
         currentBatch.clear();
-
-        for (int sourceSlot = 0; sourceSlot < CONTENT_SLOTS; sourceSlot++) {
-            // 操作栏（36-53）永远不参与清空
-            ItemStack stack = handler.getSlot(sourceSlot).getStack();
-            if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) {
-                currentBatch.add(new BatchThrow(
-                    sourceSlot,
-                    TrashPageInfo.stackSignature(stack)
-                ));
-            }
+        if (directDiscard) {
+            scanDirectBatch(handler);
+        } else {
+            scanTransferBatch(handler);
         }
 
         if (!currentBatch.isEmpty()) {
-            throwBatch(client, handler);
+            if (directDiscard) {
+                throwBatch(client, handler);
+            } else {
+                transferBatch(client, handler);
+            }
+            return;
+        }
+
+        if (!directDiscard && hasDiscardableContent(handler)
+            && findEmptyInventorySlots(handler).isEmpty()) {
+            abort(client, "玩家背包没有空格，无法先取出垃圾桶物品");
             return;
         }
 
@@ -214,15 +216,79 @@ public final class TrashCleaner {
         waitTicks = 0;
     }
 
+    private static void scanDirectBatch(ScreenHandler handler) {
+        for (int sourceSlot = 0; sourceSlot < CONTENT_SLOTS; sourceSlot++) {
+            ItemStack stack = handler.getSlot(sourceSlot).getStack();
+            if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) {
+                currentBatch.add(new BatchEntry(
+                    sourceSlot, -1, TrashPageInfo.stackSignature(stack)
+                ));
+            }
+        }
+    }
+
+    private static void scanTransferBatch(ScreenHandler handler) {
+        List<Integer> emptyInventorySlots = findEmptyInventorySlots(handler);
+        int inventoryIndex = 0;
+        for (int sourceSlot = 0; sourceSlot < CONTENT_SLOTS
+            && inventoryIndex < emptyInventorySlots.size(); sourceSlot++) {
+            ItemStack stack = handler.getSlot(sourceSlot).getStack();
+            if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) {
+                currentBatch.add(new BatchEntry(
+                    sourceSlot, emptyInventorySlots.get(inventoryIndex++),
+                    TrashPageInfo.stackSignature(stack)
+                ));
+            }
+        }
+    }
+
     private static void throwBatch(MinecraftClient client, ScreenHandler handler) {
-        for (BatchThrow move : currentBatch) {
-            // 点击前重读签名：扫描后该格已被服务器替换时跳过，避免误丢未过滤的物品
-            if (!move.expectedSignature.equals(
-                TrashPageInfo.stackSignature(handler.getSlot(move.sourceSlot).getStack()))) {
+        for (BatchEntry entry : currentBatch) {
+            if (!entry.expectedSignature.equals(
+                TrashPageInfo.stackSignature(handler.getSlot(entry.sourceSlot).getStack()))) {
                 continue;
             }
-            // button=1：整组直接从垃圾桶丢出，光标保持为空
-            click(client, handler, move.sourceSlot, 1, SlotActionType.THROW);
+            click(client, handler, entry.sourceSlot, 1, SlotActionType.THROW);
+        }
+        phase = Phase.WAIT_DISCARD;
+        waitTicks = 0;
+    }
+
+    private static void transferBatch(MinecraftClient client, ScreenHandler handler) {
+        for (BatchEntry entry : currentBatch) {
+            click(client, handler, entry.sourceSlot, 0, SlotActionType.PICKUP);
+            click(client, handler, entry.inventorySlot, 0, SlotActionType.PICKUP);
+        }
+        phase = Phase.WAIT_TRANSFER;
+        waitTicks = 0;
+    }
+
+    private static void tickTransfer(MinecraftClient client, ScreenHandler handler) {
+        waitTicks++;
+        if (waitTicks < VERIFY_MIN_TICKS) return;
+
+        if (!handler.getCursorStack().isEmpty()) {
+            retryTransferCursor(client, handler);
+            if (waitTicks >= CURSOR_WAIT_MAX_TICKS) {
+                abort(client, "垃圾桶物品转移超时，光标上的物品未能归还到背包");
+            }
+            return;
+        }
+
+        for (BatchEntry entry : currentBatch) {
+            ItemStack source = handler.getSlot(entry.sourceSlot).getStack();
+            ItemStack destination = handler.getSlot(entry.inventorySlot).getStack();
+            if (!source.isEmpty()
+                || !entry.expectedSignature.equals(TrashPageInfo.stackSignature(destination))) {
+                if (waitTicks >= VERIFY_MAX_TICKS) {
+                    abort(client, "垃圾桶物品未能完整转入背包，已停止");
+                }
+                return;
+            }
+        }
+
+        for (BatchEntry entry : currentBatch) {
+            click(client, handler, entry.inventorySlot, 1, SlotActionType.THROW);
         }
         phase = Phase.WAIT_DISCARD;
         waitTicks = 0;
@@ -233,16 +299,15 @@ public final class TrashCleaner {
         if (waitTicks < VERIFY_MIN_TICKS) return;
 
         boolean pending = false;
-        for (BatchThrow move : currentBatch) {
-            ItemStack stack = handler.getSlot(move.sourceSlot).getStack();
+        for (BatchEntry entry : currentBatch) {
+            int slot = directDiscard ? entry.sourceSlot : entry.inventorySlot;
+            ItemStack stack = handler.getSlot(slot).getStack();
             if (stack.isEmpty()
-                || !move.expectedSignature.equals(TrashPageInfo.stackSignature(stack))) {
-                // 原物品已离开该格：丢弃成功，或被服务器替换（交给下一轮扫描处理）
+                || !entry.expectedSignature.equals(TrashPageInfo.stackSignature(stack))) {
                 continue;
             }
-            // 该格仍是扫描时的同一组物品：每隔几 tick 重试一次丢弃
             if (waitTicks % RETRY_INTERVAL_TICKS == 0) {
-                click(client, handler, move.sourceSlot, 1, SlotActionType.THROW);
+                click(client, handler, slot, 1, SlotActionType.THROW);
             }
             pending = true;
         }
@@ -253,7 +318,21 @@ public final class TrashCleaner {
             return;
         }
         if (waitTicks >= VERIFY_MAX_TICKS) {
-            abort(client, "垃圾桶物品未能直接丢弃，已停止");
+            abort(client, directDiscard
+                ? "垃圾桶物品未能直接丢弃，已停止"
+                : "背包中的垃圾桶物品未能丢弃，已停止");
+        }
+    }
+
+    private static void retryTransferCursor(MinecraftClient client, ScreenHandler handler) {
+        if ((waitTicks & 3) != 0) return;
+        String cursorSignature = TrashPageInfo.stackSignature(handler.getCursorStack());
+        for (BatchEntry entry : currentBatch) {
+            if (!entry.expectedSignature.equals(cursorSignature)) continue;
+            if (handler.getSlot(entry.inventorySlot).getStack().isEmpty()) {
+                click(client, handler, entry.inventorySlot, 0, SlotActionType.PICKUP);
+            }
+            return;
         }
     }
 
@@ -261,17 +340,11 @@ public final class TrashCleaner {
         waitTicks++;
         if (waitTicks < FLIP_MIN_TICKS) return;
 
-        // The next-page control is a server-side item. Its click may leave the
-        // item on the predicted cursor until the page update arrives; this is
-        // part of navigation and must not be treated as user interference.
         if (!handler.getCursorStack().isEmpty()) {
             if (flipButtonSlot >= 0 && (waitTicks & 2) == 0) {
                 ItemStack buttonStack = handler.getSlot(flipButtonSlot).getStack();
                 String cursorSignature = TrashPageInfo.stackSignature(handler.getCursorStack());
-                if (cursorSignature.equals(expectedFlipCursorSignature)
-                    && buttonStack.isEmpty()) {
-                    // Put the predicted navigation item back into its control
-                    // slot. The page update is handled on the next tick.
+                if (cursorSignature.equals(expectedFlipCursorSignature) && buttonStack.isEmpty()) {
                     click(client, handler, flipButtonSlot, 0, SlotActionType.PICKUP);
                 }
             }
@@ -295,12 +368,6 @@ public final class TrashCleaner {
             return;
         }
 
-        // The info item reports the total number of item pages, not necessarily
-        // the current page. The local counter is authoritative. For non-empty
-        // pages, wait for a changed signature and one stable follow-up tick. An
-        // empty page can legitimately equal the already-cleared previous page,
-        // so accept that case only at the timeout after the server had time to
-        // process the page click.
         if (!currentSignature.equals(pageBeforeFlipSignature)) {
             flipSawChangedSignature = true;
         }
@@ -322,8 +389,6 @@ public final class TrashCleaner {
     private static void tickFlipCursor(MinecraftClient client, ScreenHandler handler) {
         waitTicks++;
         if (handler.getCursorStack().isEmpty()) {
-            // Keep a short settle window: the server may send the cursor
-            // correction one tick after the page contents.
             if (waitTicks >= 3) {
                 phase = Phase.SCAN;
                 flipButtonSlot = -1;
@@ -347,7 +412,26 @@ public final class TrashCleaner {
         }
     }
 
-    private static void click(MinecraftClient client, ScreenHandler handler, int slot, int button, SlotActionType type) {
+    private static List<Integer> findEmptyInventorySlots(ScreenHandler handler) {
+        List<Integer> result = new ArrayList<>();
+        for (int slot = INVENTORY_START; slot < INVENTORY_END; slot++) {
+            if (handler.getSlot(slot).getStack().isEmpty()) {
+                result.add(slot);
+            }
+        }
+        return result;
+    }
+
+    private static boolean hasDiscardableContent(ScreenHandler handler) {
+        for (int slot = 0; slot < CONTENT_SLOTS; slot++) {
+            ItemStack stack = handler.getSlot(slot).getStack();
+            if (!stack.isEmpty() && TrashClearFilter.shouldDiscard(stack)) return true;
+        }
+        return false;
+    }
+
+    private static void click(MinecraftClient client, ScreenHandler handler, int slot, int button,
+                              SlotActionType type) {
         client.interactionManager.clickSlot(handler.syncId, slot, button, type, client.player);
     }
 

@@ -230,6 +230,8 @@ public final class PickCommandHandler {
 
     private static void cmdStatus() {
         feedback("自动清空：" + (TrashCanDetectorConfigs.AUTO_CLEAR_TRASH.getBooleanValue() ? "开启" : "关闭"));
+        feedback("丢弃方式：" + (TrashCanDetectorConfigs.DIRECT_TRASH_DISCARD.getBooleanValue()
+            ? "直接丢弃" : "移到背包后丢弃"));
         feedback("清空规则：" + TrashClearFilter.modeName());
         feedback("清空名单：" + TrashClearFilter.status());
         feedback("自动购买积分：" + (PointBuyer.isEnabled() ? "开启" : "关闭")
