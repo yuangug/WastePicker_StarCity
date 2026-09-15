@@ -30,9 +30,9 @@ repositories {
 }
 
 // MaLiLib: 在依赖解析前下载，确保 Loom 配置阶段能找到 jar
-def malilibFile = file("libs/malilib-fabric-1.21.11-0.27.2.jar")
-def malilibUrl = "https://cdn.modrinth.com/data/GcWjdA9I/versions/zghuOVRx/malilib-fabric-1.21.11-0.27.2.jar"
-def malilibSha1 = "84956eb8b90c9ed5065aeaaaa7de5e95daf0acdb"
+def malilibFile = file("libs/malilib-fabric-1.21.11-0.27.16.jar")
+def malilibUrl = "https://cdn.modrinth.com/data/GcWjdA9I/versions/oaU4Ys3J/malilib-fabric-1.21.11-0.27.16.jar"
+def malilibSha1 = "fc6930259e301a878f35576ecf55a770be0b4089"
 
 if (!malilibFile.exists()) {
     malilibFile.parentFile.mkdirs()

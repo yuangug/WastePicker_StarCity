@@ -230,6 +230,9 @@ public final class PickCommandHandler {
 
     private static void cmdStatus() {
         feedback("自动清空：" + (TrashCanDetectorConfigs.AUTO_CLEAR_TRASH.getBooleanValue() ? "开启" : "关闭"));
+        feedback("自动开启无尽飞行器："
+            + (TrashCanDetectorConfigs.AUTO_ENABLE_FLIGHT_DEVICE.getBooleanValue() ? "开启" : "关闭"));
+        feedback("无尽飞行器状态：" + InfiniteFlightDeviceManager.status());
         feedback("丢弃方式：" + (TrashCanDetectorConfigs.DIRECT_TRASH_DISCARD.getBooleanValue()
             ? "直接丢弃" : "移到背包后丢弃"));
         feedback("清空规则：" + TrashClearFilter.modeName());

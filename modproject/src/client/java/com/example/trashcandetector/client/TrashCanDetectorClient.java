@@ -60,6 +60,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             if (overlay) return true;
 
             String text = message.getString();
+            InfiniteFlightDeviceManager.handleChatMessage(text);
             String stripped = stripPunctuation(text);
 
             if (containsTrashKeywords(stripped)) {
@@ -155,6 +156,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
                 TrashPicker.tick(client);
             }
             PointBuyer.tick(client);
+            InfiniteFlightDeviceManager.tick(client);
         });
     }
 
@@ -261,6 +263,14 @@ public class TrashCanDetectorClient implements ClientModInitializer {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player != null) {
             client.player.sendMessage(Text.literal(PREFIX + message), false);
+        }
+    }
+
+    /** Shows a short, non-chat status tip for one-shot automation events. */
+    static void tip(String message) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.inGameHud != null && message != null && !message.isBlank()) {
+            client.inGameHud.setOverlayMessage(Text.literal(message), false);
         }
     }
 

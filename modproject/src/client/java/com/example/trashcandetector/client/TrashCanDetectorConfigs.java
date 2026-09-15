@@ -25,6 +25,9 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigBoolean POINT_BUYER_ENABLED = new ConfigBoolean(
         "pointBuyerEnabled", false, "每 60 秒后台执行一次 /botmanager buy。"
     ).translatedName("自动购买积分");
+    public static final ConfigBoolean AUTO_ENABLE_FLIGHT_DEVICE = new ConfigBoolean(
+        "autoEnableFlightDevice", false, "进入游戏或切换维度后自动开启无尽飞行器。"
+    ).translatedName("自动开启无尽飞行器");
     public static final ConfigInteger POINTS_PER_PURCHASE = new ConfigInteger(
         "pointsPerPurchase", 1, 1, 100000, "每次发送 botmanager buy 时购买的积分数量。"
     ).translatedName("每次购买积分数量");
@@ -61,10 +64,14 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigHotkey OPEN_CONFIG_HOTKEY = new ConfigHotkey(
         "openConfigHotkey", "", "打开 TrashCan Detector 配置界面。"
     ).translatedName("打开配置界面快捷键");
+    public static final ConfigHotkey ENABLE_FLIGHT_DEVICE_HOTKEY = new ConfigHotkey(
+        "enableFlightDeviceHotkey", "", "立即尝试开启无尽飞行器。"
+    ).translatedName("开启无尽飞行器快捷键");
 
     public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
         AUTO_CLEAR_TRASH,
         POINT_BUYER_ENABLED,
+        AUTO_ENABLE_FLIGHT_DEVICE,
         POINTS_PER_PURCHASE,
         AUTO_PICK_ON_REFRESH,
         PICK_ITEM_IDS,
@@ -78,7 +85,8 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ImmutableList<ConfigHotkey> HOTKEYS = ImmutableList.of(
         CLEAR_TRASH_HOTKEY,
         START_PICK_HOTKEY,
-        OPEN_CONFIG_HOTKEY
+        OPEN_CONFIG_HOTKEY,
+        ENABLE_FLIGHT_DEVICE_HOTKEY
     );
     public static final ImmutableList<IConfigBase> GUI_OPTIONS = ImmutableList.<IConfigBase>builder()
         .addAll(OPTIONS)

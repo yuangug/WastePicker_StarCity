@@ -35,6 +35,8 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
         TrashCanDetectorConfigs.CLEAR_TRASH_HOTKEY.getKeybind().setCallback(new ClearCallback());
         TrashCanDetectorConfigs.START_PICK_HOTKEY.getKeybind().setCallback(new StartPickCallback());
         TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY.getKeybind().setCallback(new ConfigCallback());
+        TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY.getKeybind()
+            .setCallback(new EnableFlightDeviceCallback());
         InputEventHandler.getKeybindManager().registerKeybindProvider(KEYBINDS);
     }
 
@@ -44,6 +46,7 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
             manager.addKeybindToMap(TrashCanDetectorConfigs.CLEAR_TRASH_HOTKEY.getKeybind());
             manager.addKeybindToMap(TrashCanDetectorConfigs.START_PICK_HOTKEY.getKeybind());
             manager.addKeybindToMap(TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY.getKeybind());
+            manager.addKeybindToMap(TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY.getKeybind());
         }
 
         @Override
@@ -51,7 +54,8 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
             List<? extends IHotkey> hotkeys = ImmutableList.of(
                 TrashCanDetectorConfigs.CLEAR_TRASH_HOTKEY,
                 TrashCanDetectorConfigs.START_PICK_HOTKEY,
-                TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY
+                TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY,
+                TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY
             );
             manager.addHotkeysForCategory(
                 "TrashCan Detector", "trashcandetector.hotkeys", hotkeys
@@ -79,6 +83,14 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
         @Override
         public boolean onKeyAction(KeyAction action, IKeybind key) {
             TrashCanDetectorClient.requestPickStart();
+            return true;
+        }
+    }
+
+    private static final class EnableFlightDeviceCallback implements IHotkeyCallback {
+        @Override
+        public boolean onKeyAction(KeyAction action, IKeybind key) {
+            InfiniteFlightDeviceManager.requestEnsure();
             return true;
         }
     }
