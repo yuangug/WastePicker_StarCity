@@ -29,9 +29,10 @@ final class InfiniteFlightDeviceManager {
     private static final int PREPARE_DELAY_TICKS = 2;
     private static final int TRANSFER_TIMEOUT_TICKS = 40;
     private static final int CHAT_TIMEOUT_TICKS = 40;
-    private static final int RETURN_TIMEOUT_TICKS = 100;
+    private static final int RETURN_TIMEOUT_TICKS = 40;
     private static final int DROP_VERIFY_TICKS = 20;
     private static final int RETRY_INTERVAL_TICKS = 4;
+    private static final int RETURN_RETRY_INTERVAL_TICKS = 2;
     private static final int MAX_TOGGLE_ATTEMPTS = 2;
 
     private enum Phase {
@@ -407,20 +408,15 @@ final class InfiniteFlightDeviceManager {
         // A fast client-side prediction can show the device already back in
         // its source slot before this phase is entered. Check this first so an
         // empty temporary slot is treated as success, not as a lost device.
-        if (isDevice(source) && temporary.isEmpty()) {
+        if (!isDevice(temporary) && findReturnedDeviceSlot(inventory) >= 0) {
             restoreSelection(inventory);
             finish(client, operationSucceeded ? "无尽飞行器已开启并放回背包" : failureReason);
             return;
         }
 
         if (source.isEmpty() && isDevice(temporary)) {
-            if (phaseTicks % RETRY_INTERVAL_TICKS == 0) {
-                swapSourceWithTemporary(client);
-            }
+            swapSourceWithTemporary(client);
             phase = Phase.WAIT_RETURN;
-            if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
-                finish(client, "无尽飞行器未能放回原背包槽位，未替换任何物品");
-            }
             return;
         }
 
@@ -461,13 +457,13 @@ final class InfiniteFlightDeviceManager {
         PlayerInventory inventory = client.player.getInventory();
         ItemStack source = inventory.getStack(sourceInventoryIndex);
         ItemStack temporary = getTemporaryStack(inventory);
-        if (isDevice(source) && temporary.isEmpty()) {
+        if (!isDevice(temporary) && findReturnedDeviceSlot(inventory) >= 0) {
             restoreSelection(inventory);
             finish(client, operationSucceeded ? "无尽飞行器已开启并放回背包" : failureReason);
             return;
         }
         if (source.isEmpty() && isDevice(temporary)
-            && phaseTicks % RETRY_INTERVAL_TICKS == 0) {
+            && phaseTicks % RETURN_RETRY_INTERVAL_TICKS == 0) {
             swapSourceWithTemporary(client);
         }
         if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
@@ -642,6 +638,25 @@ final class InfiniteFlightDeviceManager {
         pendingDropSlot = -1;
         pendingDropTargetCount = -1;
         pendingDropIdentity = null;
+    }
+
+    private static int findReturnedDeviceSlot(PlayerInventory inventory) {
+        for (int index = 0; index <= PlayerInventory.OFF_HAND_SLOT; index++) {
+            if (index == temporaryInventoryIndex || !isDevice(inventory.getStack(index))) {
+                continue;
+            }
+            if (index == sourceInventoryIndex) {
+                return index;
+            }
+            // A different slot is accepted only when it was empty before the
+            // operation. This prevents an already-owned duplicate device from
+            // being mistaken for the one currently being returned.
+            if (baselineInventory != null && index < baselineInventory.length
+                && baselineInventory[index].isEmpty()) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     private static ItemStack getTemporaryStack(PlayerInventory inventory) {
