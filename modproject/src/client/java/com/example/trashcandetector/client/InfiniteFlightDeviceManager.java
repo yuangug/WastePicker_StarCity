@@ -29,7 +29,7 @@ final class InfiniteFlightDeviceManager {
     private static final int PREPARE_DELAY_TICKS = 2;
     private static final int TRANSFER_TIMEOUT_TICKS = 40;
     private static final int CHAT_TIMEOUT_TICKS = 40;
-    private static final int RETURN_TIMEOUT_TICKS = 40;
+    private static final int RETURN_TIMEOUT_TICKS = 100;
     private static final int DROP_VERIFY_TICKS = 20;
     private static final int RETRY_INTERVAL_TICKS = 4;
     private static final int MAX_TOGGLE_ATTEMPTS = 2;
@@ -402,34 +402,58 @@ final class InfiniteFlightDeviceManager {
         }
 
         ItemStack temporary = getTemporaryStack(inventory);
-        if (!matchesExpected(temporary)) {
-            finish(client, "无尽飞行器已离开临时槽位，未执行物品替换");
-            return;
-        }
-
         ItemStack source = inventory.getStack(sourceInventoryIndex);
-        if (source.isEmpty()) {
-            swapSourceWithTemporary(client);
-            phase = Phase.WAIT_RETURN;
-            phaseTicks = 0;
-            return;
-        }
-        if (matchesExpected(source) && temporary.isEmpty()) {
+
+        // A fast client-side prediction can show the device already back in
+        // its source slot before this phase is entered. Check this first so an
+        // empty temporary slot is treated as success, not as a lost device.
+        if (isDevice(source) && temporary.isEmpty()) {
             restoreSelection(inventory);
             finish(client, operationSucceeded ? "无尽飞行器已开启并放回背包" : failureReason);
             return;
         }
 
-        if (sourceObservedEmpty && isDefinitelyNewItem(sourceInventoryIndex, source, true)) {
+        if (source.isEmpty() && isDevice(temporary)) {
+            if (phaseTicks % RETRY_INTERVAL_TICKS == 0) {
+                swapSourceWithTemporary(client);
+            }
+            phase = Phase.WAIT_RETURN;
+            if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
+                finish(client, "无尽飞行器未能放回原背包槽位，未替换任何物品");
+            }
+            return;
+        }
+
+        // Wait briefly for the server's inventory packet if both slots are
+        // temporarily empty or the temporary slot has not updated yet.
+        if (source.isEmpty() && temporary.isEmpty()) {
+            if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
+                finish(client, "无尽飞行器归还同步超时，未替换任何物品");
+            }
+            return;
+        }
+
+        if (isDevice(source) && isDevice(temporary)) {
+            if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
+                finish(client, "检测到归还槽位存在重复物品，未执行替换");
+            }
+            return;
+        }
+
+        if (isDevice(temporary)
+            && sourceObservedEmpty
+            && isDefinitelyNewItem(sourceInventoryIndex, source, true)) {
             if (!startDrop(client, sourceInventoryIndex, true)) {
                 finish(client, "原槽位中的新物品无法安全识别，未替换任何物品");
             }
             return;
         }
 
-        finish(client, failureReason == null
-            ? "原槽位存在取出前已有物品，未替换任何物品"
-            : failureReason + "；原槽位不是新拾取物，未替换任何物品");
+        if (phaseTicks >= RETURN_TIMEOUT_TICKS) {
+            finish(client, failureReason == null
+                ? "原槽位存在取出前已有物品，未替换任何物品"
+                : failureReason + "；原槽位不是新拾取物，未替换任何物品");
+        }
     }
 
     private static void tickReturnWait(MinecraftClient client) {
@@ -437,12 +461,12 @@ final class InfiniteFlightDeviceManager {
         PlayerInventory inventory = client.player.getInventory();
         ItemStack source = inventory.getStack(sourceInventoryIndex);
         ItemStack temporary = getTemporaryStack(inventory);
-        if (matchesExpected(source) && temporary.isEmpty()) {
+        if (isDevice(source) && temporary.isEmpty()) {
             restoreSelection(inventory);
             finish(client, operationSucceeded ? "无尽飞行器已开启并放回背包" : failureReason);
             return;
         }
-        if (source.isEmpty() && matchesExpected(temporary)
+        if (source.isEmpty() && isDevice(temporary)
             && phaseTicks % RETRY_INTERVAL_TICKS == 0) {
             swapSourceWithTemporary(client);
         }
@@ -492,10 +516,14 @@ final class InfiniteFlightDeviceManager {
     }
 
     private static boolean isSafeToTouchPlayerInventory(MinecraftClient client) {
-        return client.currentScreen == null
-            && client.interactionManager != null
-            && client.player.currentScreenHandler != null
-            && client.player.currentScreenHandler.slots.size() >= PLAYER_HANDLER_SLOTS;
+        if (client.currentScreen != null || client.interactionManager == null
+            || client.player.currentScreenHandler == null
+            || client.player.currentScreenHandler.slots.size() != PLAYER_HANDLER_SLOTS) {
+            return false;
+        }
+        // Never issue a SWAP/THROW while a previous interaction left an item
+        // on the cursor; doing so could move or replace an unrelated item.
+        return client.player.currentScreenHandler.getCursorStack().isEmpty();
     }
 
     private static Target findTarget(PlayerInventory inventory) {
@@ -625,9 +653,10 @@ final class InfiniteFlightDeviceManager {
     }
 
     private static boolean matchesExpected(ItemStack stack) {
-        return !stack.isEmpty()
-            && expectedDeviceSignature != null
-            && expectedDeviceSignature.equals(TrashPageInfo.stackSignature(stack));
+        // The server may update stack components or count after the right
+        // click. The requested identity is the item ID plus display name;
+        // UUID and other changing components are intentionally ignored.
+        return isDevice(stack);
     }
 
     private static boolean isDevice(ItemStack stack) {
