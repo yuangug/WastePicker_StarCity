@@ -184,10 +184,10 @@ final class InfiniteFlightDeviceManager {
             return;
         }
 
-        boolean disabled = containsAny(text,
-            "未开启", "没有开启", "关闭", "禁用", "已关闭", "disabled", " off");
         boolean enabled = containsAny(text,
-            "开启", "启用", "已开启", "打开", "enabled", " on");
+            "已启用", "已开启", "启用", "开启", "打开", "enabled", " on");
+        boolean disabled = containsAny(text,
+            "未启用", "未开启", "没有开启", "已关闭", "关闭", "禁用", "disabled", " off");
 
         if (disabled) {
             enabledState = false;
@@ -666,6 +666,9 @@ final class InfiniteFlightDeviceManager {
 
     private static boolean isFlightMessage(String text) {
         return text.contains("无尽飞行器")
+            || text.contains("无尽飞行")
+            || text.contains("无限飞行器")
+            || text.contains("无限飞行")
             || text.contains("infinite flight")
             || text.contains("flight device");
     }
