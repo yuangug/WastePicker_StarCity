@@ -37,6 +37,10 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
         TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY.getKeybind().setCallback(new ConfigCallback());
         TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY.getKeybind()
             .setCallback(new EnableFlightDeviceCallback());
+        TrashCanDetectorConfigs.ORGANIZE_CURRENT_SHULKER_HOTKEY.getKeybind()
+            .setCallback(new OrganizeCurrentCallback());
+        TrashCanDetectorConfigs.ORGANIZE_ALL_SHULKERS_HOTKEY.getKeybind()
+            .setCallback(new OrganizeAllCallback());
         InputEventHandler.getKeybindManager().registerKeybindProvider(KEYBINDS);
     }
 
@@ -47,6 +51,8 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
             manager.addKeybindToMap(TrashCanDetectorConfigs.START_PICK_HOTKEY.getKeybind());
             manager.addKeybindToMap(TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY.getKeybind());
             manager.addKeybindToMap(TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY.getKeybind());
+            manager.addKeybindToMap(TrashCanDetectorConfigs.ORGANIZE_CURRENT_SHULKER_HOTKEY.getKeybind());
+            manager.addKeybindToMap(TrashCanDetectorConfigs.ORGANIZE_ALL_SHULKERS_HOTKEY.getKeybind());
         }
 
         @Override
@@ -55,7 +61,9 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
                 TrashCanDetectorConfigs.CLEAR_TRASH_HOTKEY,
                 TrashCanDetectorConfigs.START_PICK_HOTKEY,
                 TrashCanDetectorConfigs.OPEN_CONFIG_HOTKEY,
-                TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY
+                TrashCanDetectorConfigs.ENABLE_FLIGHT_DEVICE_HOTKEY,
+                TrashCanDetectorConfigs.ORGANIZE_CURRENT_SHULKER_HOTKEY,
+                TrashCanDetectorConfigs.ORGANIZE_ALL_SHULKERS_HOTKEY
             );
             manager.addHotkeysForCategory(
                 "TrashCan Detector", "trashcandetector.hotkeys", hotkeys
@@ -91,6 +99,22 @@ public final class TrashCanDetectorMalilib implements IInitializationHandler {
         @Override
         public boolean onKeyAction(KeyAction action, IKeybind key) {
             InfiniteFlightDeviceManager.requestEnsure();
+            return true;
+        }
+    }
+
+    private static final class OrganizeCurrentCallback implements IHotkeyCallback {
+        @Override
+        public boolean onKeyAction(KeyAction action, IKeybind key) {
+            ShulkerOrganizer.requestCurrent();
+            return true;
+        }
+    }
+
+    private static final class OrganizeAllCallback implements IHotkeyCallback {
+        @Override
+        public boolean onKeyAction(KeyAction action, IKeybind key) {
+            ShulkerOrganizer.requestAll();
             return true;
         }
     }

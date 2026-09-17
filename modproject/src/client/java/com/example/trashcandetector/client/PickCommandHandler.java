@@ -22,6 +22,7 @@ public final class PickCommandHandler {
 
     public static final String COMMAND = "//pick";
     public static final String TRASH_COMMAND = "//trash";
+    public static final String SHULKER_COMMAND = "//shulker";
 
     /** //pick add 物品 ID 补全：全物品注册表（原版风格，支持短名匹配） */
     private static final SuggestionProvider<ClientCommandSource> ADD_SUGGESTIONS =
@@ -49,6 +50,10 @@ public final class PickCommandHandler {
 
     public static boolean isTrashCommand(String text) {
         return isCommand(text, TRASH_COMMAND);
+    }
+
+    public static boolean isShulkerCommand(String text) {
+        return isCommand(text, SHULKER_COMMAND);
     }
 
     private static boolean isCommand(String text, String command) {
@@ -104,6 +109,18 @@ public final class PickCommandHandler {
                 return 1;
             }));
         dispatcher.register(trashRoot);
+
+        LiteralArgumentBuilder<ClientCommandSource> shulkerRoot =
+            LiteralArgumentBuilder.<ClientCommandSource>literal("/shulker");
+        shulkerRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("current")
+            .executes(ctx -> { execute(SHULKER_COMMAND + " current"); return 1; }));
+        shulkerRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("all")
+            .executes(ctx -> { execute(SHULKER_COMMAND + " all"); return 1; }));
+        shulkerRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("cancel")
+            .executes(ctx -> { execute(SHULKER_COMMAND + " cancel"); return 1; }));
+        shulkerRoot.then(LiteralArgumentBuilder.<ClientCommandSource>literal("status")
+            .executes(ctx -> { execute(SHULKER_COMMAND + " status"); return 1; }));
+        dispatcher.register(shulkerRoot);
     }
 
     /**
@@ -111,7 +128,8 @@ public final class PickCommandHandler {
      */
     public static void execute(String chatText) {
         boolean trash = isTrashCommand(chatText);
-        String command = trash ? TRASH_COMMAND : COMMAND;
+        boolean shulker = isShulkerCommand(chatText);
+        String command = trash ? TRASH_COMMAND : shulker ? SHULKER_COMMAND : COMMAND;
         String rest = chatText.substring(command.length()).trim();
         String[] args = rest.isEmpty() ? new String[0] : rest.split(" ");
 
@@ -128,6 +146,21 @@ public final class PickCommandHandler {
                 case "status" -> {
                     if (args.length != 1) usage(); else cmdStatus();
                 }
+                default -> usage();
+            }
+            return;
+        }
+
+        if (shulker) {
+            if (args.length != 1) {
+                usage();
+                return;
+            }
+            switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "current" -> ShulkerOrganizer.requestCurrent();
+                case "all" -> ShulkerOrganizer.requestAll();
+                case "cancel" -> ShulkerOrganizer.cancel();
+                case "status" -> feedback("潜影盒整理状态：" + ShulkerOrganizer.status());
                 default -> usage();
             }
             return;
@@ -182,6 +215,10 @@ public final class PickCommandHandler {
         feedback("//pick del <物品ID> —— 删除列表中的物品（支持 Tab 补全）");
         feedback("//trash clear —— 打开垃圾桶并自动丢弃全部物品");
         feedback("//trash status —— 查看自动化开关和运行状态");
+        feedback("//shulker current —— 整理当前潜影盒");
+        feedback("//shulker all —— 按配置模式整理全部潜影盒");
+        feedback("//shulker cancel —— 请求安全取消潜影盒整理");
+        feedback("//shulker status —— 查看潜影盒整理状态");
     }
 
     private static void cmdStart() {
@@ -240,7 +277,8 @@ public final class PickCommandHandler {
         feedback("自动购买积分：" + (PointBuyer.isEnabled() ? "开启" : "关闭")
             + "，每次 " + TrashCanDetectorConfigs.pointsPerPurchase() + " 个");
         feedback("运行状态：" + (TrashCleaner.isActive() ? "正在清空垃圾桶"
-            : TrashPicker.isActive() ? "正在搜索垃圾桶" : "空闲"));
+            : TrashPicker.isActive() ? "正在搜索垃圾桶"
+            : ShulkerOrganizer.isActive() ? ShulkerOrganizer.status() : "空闲"));
     }
 
     private static void feedback(String message) {

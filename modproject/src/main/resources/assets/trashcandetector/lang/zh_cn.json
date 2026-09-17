@@ -13,6 +13,11 @@
   "config.name.clearwhitelist": "清空白名单",
   "config.name.synctweakeroomininglist": "同步 Tweakeroo 挖掘名单",
   "config.name.syncprintermininglist": "同步投影打印机挖掘名单",
+  "config.name.shulkerorganizerenabled": "启用潜影盒整理",
+  "config.name.shulkerorganizermode": "潜影盒整理模式",
+  "config.name.shulkercategoryrules": "潜影盒自定义分类规则",
+  "config.name.organizecurrentshulkerhotkey": "整理当前潜影盒快捷键",
+  "config.name.organizeallshulkershotkey": "整理全部潜影盒快捷键",
   "config.comment.autocleartrash": "检测到垃圾桶刷新后自动打开并丢弃全部物品。",
   "config.comment.pointbuyerenabled": "每 60 秒后台执行一次 /botmanager buy。",
   "config.comment.autoenableflightdevice": "进入游戏或切换维度后自动取出并开启无尽飞行器。",
@@ -26,5 +31,10 @@
   "config.comment.clearwhitelist": "清空时仅允许丢出的物品 ID，每行一个。",
   "config.comment.synctweakeroomininglist": "把 Tweakeroo 的方块挖掘限制名单作为清空过滤规则。",
   "config.comment.syncprintermininglist": "把 Litematica Printer Hana 的挖掘名单作为清空过滤规则。",
+  "config.comment.shulkerorganizerenabled": "允许使用 QuickShulker 自动整理潜影盒。",
+  "config.comment.shulkerorganizermode": "整理全部潜影盒快捷键使用的模式。",
+  "config.comment.shulkercategoryrules": "格式：类别|item/tag/name|匹配值，按从上到下的顺序优先匹配。",
+  "config.comment.organizecurrentshulkerhotkey": "整理当前或鼠标悬停的潜影盒。",
+  "config.comment.organizeallshulkershotkey": "按配置模式整理背包内全部潜影盒。",
   "trashcandetector.hotkeys": "垃圾桶探测器快捷键"
 }

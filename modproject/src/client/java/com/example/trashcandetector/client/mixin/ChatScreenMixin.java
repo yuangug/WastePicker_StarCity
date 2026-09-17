@@ -33,14 +33,17 @@ public abstract class ChatScreenMixin {
             return;
         }
         String text = this.chatField.getText();
-        if (!PickCommandHandler.isPickCommand(text) && !PickCommandHandler.isTrashCommand(text)) {
+        if (!PickCommandHandler.isPickCommand(text) && !PickCommandHandler.isTrashCommand(text)
+            && !PickCommandHandler.isShulkerCommand(text)) {
             return;
         }
 
         // 沿用原版规整（去首尾空格、压缩连续空格）
         ChatScreen self = (ChatScreen) (Object) this;
         String normalized = self.normalize(text);
-        if (!PickCommandHandler.isPickCommand(normalized) && !PickCommandHandler.isTrashCommand(normalized)) {
+        if (!PickCommandHandler.isPickCommand(normalized)
+            && !PickCommandHandler.isTrashCommand(normalized)
+            && !PickCommandHandler.isShulkerCommand(normalized)) {
             return;
         }
 

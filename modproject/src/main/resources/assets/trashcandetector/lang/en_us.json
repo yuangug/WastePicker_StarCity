@@ -13,6 +13,11 @@
   "config.name.clearwhitelist": "Trash Clear Whitelist",
   "config.name.synctweakeroomininglist": "Sync Tweakeroo Mining List",
   "config.name.syncprintermininglist": "Sync Printer Mining List",
+  "config.name.shulkerorganizerenabled": "Enable Shulker Organizer",
+  "config.name.shulkerorganizermode": "Shulker Organizer Mode",
+  "config.name.shulkercategoryrules": "Shulker Custom Category Rules",
+  "config.name.organizecurrentshulkerhotkey": "Organize Current Shulker Hotkey",
+  "config.name.organizeallshulkershotkey": "Organize All Shulkers Hotkey",
   "config.comment.autocleartrash": "Open the trash GUI and discard all items after a refresh message.",
   "config.comment.pointbuyerenabled": "Run /botmanager buy once every 60 seconds in the background.",
   "config.comment.autoenableflightdevice": "Take out and enable the Infinite Flight Device after joining or changing dimensions.",
@@ -26,5 +31,10 @@
   "config.comment.clearwhitelist": "Only these item IDs are cleared, one per line.",
   "config.comment.synctweakeroomininglist": "Use Tweakeroo's block mining restriction list as a clear filter.",
   "config.comment.syncprintermininglist": "Use Litematica Printer Hana's excavation list as a clear filter.",
+  "config.comment.shulkerorganizerenabled": "Allow QuickShulker-backed shulker organization.",
+  "config.comment.shulkerorganizermode": "Mode used by the organize-all hotkey.",
+  "config.comment.shulkercategoryrules": "Format: category|item/tag/name|value, in priority order.",
+  "config.comment.organizecurrentshulkerhotkey": "Organize the current or hovered shulker.",
+  "config.comment.organizeallshulkershotkey": "Organize all eligible inventory shulkers using the configured mode.",
   "trashcandetector.hotkeys": "TrashCan Detector Hotkeys"
 }

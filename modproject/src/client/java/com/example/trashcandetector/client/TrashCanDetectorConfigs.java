@@ -28,6 +28,17 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigBoolean AUTO_ENABLE_FLIGHT_DEVICE = new ConfigBoolean(
         "autoEnableFlightDevice", false, "进入游戏或切换维度后自动开启无尽飞行器。"
     ).translatedName("自动开启无尽飞行器");
+    public static final ConfigBoolean SHULKER_ORGANIZER_ENABLED = new ConfigBoolean(
+        "shulkerOrganizerEnabled", false, "允许使用 QuickShulker 自动整理潜影盒。"
+    ).translatedName("启用潜影盒整理");
+    public static final ConfigOptionList SHULKER_ORGANIZER_MODE = new ConfigOptionList(
+        "shulkerOrganizerMode", ShulkerOrganizerMode.SINGLE_BOX_SORT,
+        "整理全部潜影盒快捷键使用的模式。"
+    ).translatedName("潜影盒整理模式");
+    public static final ConfigStringList SHULKER_CATEGORY_RULES = new ConfigStringList(
+        "shulkerCategoryRules", ImmutableList.of(),
+        "格式：类别|item/tag/name|匹配值，按从上到下的顺序优先匹配。"
+    ).translatedName("潜影盒自定义分类规则");
     public static final ConfigInteger POINTS_PER_PURCHASE = new ConfigInteger(
         "pointsPerPurchase", 1, 1, 100000, "每次发送 botmanager buy 时购买的积分数量。"
     ).translatedName("每次购买积分数量");
@@ -67,11 +78,20 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigHotkey ENABLE_FLIGHT_DEVICE_HOTKEY = new ConfigHotkey(
         "enableFlightDeviceHotkey", "", "立即尝试开启无尽飞行器。"
     ).translatedName("开启无尽飞行器快捷键");
+    public static final ConfigHotkey ORGANIZE_CURRENT_SHULKER_HOTKEY = new ConfigHotkey(
+        "organizeCurrentShulkerHotkey", "", "整理当前或鼠标悬停的潜影盒。"
+    ).translatedName("整理当前潜影盒快捷键");
+    public static final ConfigHotkey ORGANIZE_ALL_SHULKERS_HOTKEY = new ConfigHotkey(
+        "organizeAllShulkersHotkey", "", "按配置模式整理背包内全部潜影盒。"
+    ).translatedName("整理全部潜影盒快捷键");
 
     public static final ImmutableList<IConfigBase> OPTIONS = ImmutableList.of(
         AUTO_CLEAR_TRASH,
         POINT_BUYER_ENABLED,
         AUTO_ENABLE_FLIGHT_DEVICE,
+        SHULKER_ORGANIZER_ENABLED,
+        SHULKER_ORGANIZER_MODE,
+        SHULKER_CATEGORY_RULES,
         POINTS_PER_PURCHASE,
         AUTO_PICK_ON_REFRESH,
         PICK_ITEM_IDS,
@@ -86,7 +106,9 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
         CLEAR_TRASH_HOTKEY,
         START_PICK_HOTKEY,
         OPEN_CONFIG_HOTKEY,
-        ENABLE_FLIGHT_DEVICE_HOTKEY
+        ENABLE_FLIGHT_DEVICE_HOTKEY,
+        ORGANIZE_CURRENT_SHULKER_HOTKEY,
+        ORGANIZE_ALL_SHULKERS_HOTKEY
     );
     public static final ImmutableList<IConfigBase> GUI_OPTIONS = ImmutableList.<IConfigBase>builder()
         .addAll(OPTIONS)
@@ -114,6 +136,7 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
         }
         PickList.reloadFromConfig();
         TrashClearFilter.reload();
+        ShulkerCategoryRules.reload();
     }
 
     @Override
@@ -129,6 +152,7 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public void onConfigsChanged() {
         PickList.reloadFromConfig();
         TrashClearFilter.reload();
+        ShulkerCategoryRules.reload();
         save();
     }
 

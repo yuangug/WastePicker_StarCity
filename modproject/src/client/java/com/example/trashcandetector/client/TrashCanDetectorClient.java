@@ -53,6 +53,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         LOGGER.info("TrashCan Detector 已加载，开始监听垃圾桶刷新消息");
+        QuickShulkerAdapter.initialize();
         InitializationHandler.getInstance().registerInitializationHandler(new TrashCanDetectorMalilib());
 
         // 1) 聊天消息监听：检测到垃圾桶提示后自动发送 /trash（自动拾取任务运行中时忽略）
@@ -60,6 +61,8 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             if (overlay) return true;
 
             String text = message.getString();
+            // Local feedback must never be interpreted as a new server message.
+            if (text.startsWith(PREFIX)) return true;
             InfiniteFlightDeviceManager.handleChatMessage(text);
             String stripped = stripPunctuation(text);
 
@@ -81,10 +84,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
                 LOGGER.info("检测到垃圾桶刷新消息: {}", text);
                 MinecraftClient client = MinecraftClient.getInstance();
                 if (client.player != null && client.getNetworkHandler() != null) {
-                    client.player.sendMessage(
-                        Text.literal(PREFIX + "检测到垃圾桶刷新，正在自动打开..."),
-                        false
-                    );
+                    feedback("检测到垃圾桶刷新，正在自动打开...");
                     // 发送 /trash 指令打开垃圾桶插件 GUI
                     client.getNetworkHandler().sendChatCommand("trash");
                     waitingForTrashScreen = true;
@@ -150,7 +150,9 @@ public class TrashCanDetectorClient implements ClientModInitializer {
                 }
             }
 
-            if (TrashCleaner.isActive()) {
+            if (ShulkerOrganizer.isActive()) {
+                ShulkerOrganizer.tick(client);
+            } else if (TrashCleaner.isActive()) {
                 TrashCleaner.tick(client);
             } else {
                 TrashPicker.tick(client);
@@ -161,7 +163,8 @@ public class TrashCanDetectorClient implements ClientModInitializer {
     }
 
     static boolean isBusy() {
-        return waitingForTrashScreen || pendingRead || TrashPicker.isActive() || TrashCleaner.isActive();
+        return waitingForTrashScreen || pendingRead || TrashPicker.isActive()
+            || TrashCleaner.isActive() || ShulkerOrganizer.isActive();
     }
 
     private static void cancelPendingTrashRequest() {
@@ -200,7 +203,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             feedback("搜索列表为空，请先用 //pick add <物品ID> 添加物品（//pick list 查看）");
             return;
         }
-        if (TrashPicker.isActive() || TrashCleaner.isActive()) {
+        if (TrashPicker.isActive() || TrashCleaner.isActive() || ShulkerOrganizer.isActive()) {
             feedback("正在搜索中，请等待当前任务完成");
             return;
         }
@@ -233,7 +236,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             feedback("请先进入游戏服务器后再使用 //trash clear");
             return;
         }
-        if (TrashPicker.isActive() || TrashCleaner.isActive()) {
+        if (TrashPicker.isActive() || TrashCleaner.isActive() || ShulkerOrganizer.isActive()) {
             feedback("已有垃圾桶自动化任务正在运行");
             return;
         }
@@ -261,8 +264,8 @@ public class TrashCanDetectorClient implements ClientModInitializer {
      */
     static void feedback(String message) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player != null) {
-            client.player.sendMessage(Text.literal(PREFIX + message), false);
+        if (client.inGameHud != null && message != null && !message.isBlank()) {
+            client.inGameHud.getChatHud().addMessage(Text.literal(PREFIX + message));
         }
     }
 
@@ -299,12 +302,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
         }
 
         if (items.isEmpty()) {
-            if (client.player != null) {
-                client.player.sendMessage(
-                    Text.literal(PREFIX + "容器为空或数据未同步，无内容可导出"),
-                    false
-                );
-            }
+            feedback("容器为空或数据未同步，无内容可导出");
             return;
         }
 
@@ -327,12 +325,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
 
         } catch (IOException e) {
             LOGGER.error("导出垃圾桶内容失败", e);
-            if (client.player != null) {
-                client.player.sendMessage(
-                    Text.literal(PREFIX + "导出失败: " + e.getMessage()),
-                    false
-                );
-            }
+            feedback("导出失败: " + e.getMessage());
         }
     }
 

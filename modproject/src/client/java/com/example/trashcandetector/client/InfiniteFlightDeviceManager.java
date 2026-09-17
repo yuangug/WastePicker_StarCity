@@ -90,9 +90,17 @@ final class InfiniteFlightDeviceManager {
     private InfiniteFlightDeviceManager() {
     }
 
+    static boolean isActive() {
+        return phase != Phase.IDLE;
+    }
+
     static void tick(MinecraftClient client) {
         if (client.player == null || client.getNetworkHandler() == null || client.world == null) {
             resetConnectionState();
+            return;
+        }
+
+        if (ShulkerOrganizer.isActive()) {
             return;
         }
 
