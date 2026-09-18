@@ -28,6 +28,9 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
     public static final ConfigBoolean AUTO_ENABLE_FLIGHT_DEVICE = new ConfigBoolean(
         "autoEnableFlightDevice", false, "进入游戏或切换维度后自动开启无尽飞行器。"
     ).translatedName("自动开启无尽飞行器");
+    public static final ConfigBoolean AUTO_SEND_ZZZ_WHILE_SLEEPING = new ConfigBoolean(
+        "autoSendZzzWhileSleeping", false, "每次进入睡眠状态时自动发送一次聊天消息 zzz。"
+    ).translatedName("睡觉时自动发送 zzz");
     public static final ConfigBoolean SHULKER_ORGANIZER_ENABLED = new ConfigBoolean(
         "shulkerOrganizerEnabled", false, "允许使用 QuickShulker 自动整理潜影盒。"
     ).translatedName("启用潜影盒整理");
@@ -89,6 +92,7 @@ public final class TrashCanDetectorConfigs implements IConfigHandler {
         AUTO_CLEAR_TRASH,
         POINT_BUYER_ENABLED,
         AUTO_ENABLE_FLIGHT_DEVICE,
+        AUTO_SEND_ZZZ_WHILE_SLEEPING,
         SHULKER_ORGANIZER_ENABLED,
         SHULKER_ORGANIZER_MODE,
         SHULKER_CATEGORY_RULES,

@@ -159,6 +159,7 @@ public class TrashCanDetectorClient implements ClientModInitializer {
             }
             PointBuyer.tick(client);
             InfiniteFlightDeviceManager.tick(client);
+            SleepChatSender.tick(client);
         });
     }
 
