@@ -34,7 +34,7 @@ public final class TrashPicker {
     /** 翻页等待上限（tick）：内容始终未变才判定已到最后一页（保留 1 秒兜底，防慢服误判翻到底） */
     private static final int FLIP_MAX_TICKS = 20;
     /** 安全上限：最多翻多少页，防止极端情况死循环 */
-    private static final int MAX_PAGES = 200;
+    private static final int MAX_PAGES = 600;
     /** 连续拾取失败多少次后放弃 */
     private static final int MAX_CONSECUTIVE_FAILURES = 10;
 

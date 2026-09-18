@@ -22,7 +22,7 @@ public final class TrashCleaner {
     private static final int CURSOR_WAIT_MAX_TICKS = 60;
     private static final int FLIP_MIN_TICKS = 3;
     private static final int FLIP_MAX_TICKS = 30;
-    private static final int MAX_PAGES = 200;
+    private static final int MAX_PAGES = 600;
     private static final int PAGE_INFO_WAIT_MAX_TICKS = 20 * 5;
     private static final int EXTERNAL_LIST_REFRESH_TICKS = 40;
 
